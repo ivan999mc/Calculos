@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cálculos de Sujutsu</title>
+
+  <style>
+    body{font-family:system-ui,sans-serif;max-width:820px;margin:40px auto;padding:0 18px}
+    h1{font-weight:650;text-align:center;margin-bottom:18px}
+    label{display:block;margin-top:14px;font-weight:650}
+    input,select,button{width:100%;padding:10px;font-size:16px;margin-top:6px}
+    button{margin-top:14px;cursor:pointer;font-weight:650}
+    .panel{background:#f5f5f5;border-radius:12px;padding:14px;margin-top:14px}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .hidden{display:none !important;}
+    .hint{font-size:13px;color:#333;margin-top:6px}
+    #out{margin-top:16px}
+    .warn{color:#8a1f1f;font-weight:650}
+
+    .matrix{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:18px;
+      text-align:center;
+      align-items:center;
+    }
+    .cell{font-size:18px;font-weight:700}
+    .cell span{display:block;font-size:34px;margin-top:6px}
+    .dot{font-size:34px;font-weight:900;line-height:1}
+  </style>
+</head>
+
+<body>
+<h1>Cálculos de Sujutsu</h1>
+
+<label>Modo de cálculo</label>
+<select id="mode">
+  <option value="p1">Enredo</option>
+  <option value="p1d">Día concreto</option>
+  <option value="p2d">Encuentro</option>
+</select>
+
+<div class="panel">
+  <h3>Persona A</h3>
+
+  <label>Nombre y apellidos completos</label>
+  <input id="nameA">
+
+  <div class="row">
+    <div>
+      <label>Fecha de nacimiento</label>
+      <input id="dobA" type="date">
+    </div>
+    <div>
+      <label>¿Iniciado?</label>
+      <select id="initA">
+        <option value="no">No</option>
+        <option value="yes">Sí</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="panel hidden" id="dayPanel">
+  <h3>Día concreto</h3>
+  <input id="dayX" type="date">
+</div>
+
+<div class="panel hidden" id="personBPanel">
+  <h3>Persona B</h3>
+
+  <label>Nombre y apellidos completos</label>
+  <input id="nameB">
+
+  <div class="row">
+    <div>
+      <label>Fecha de nacimiento</label>
+      <input id="dobB" type="date">
+    </div>
+    <div>
+      <label>¿Iniciado?</label>
+      <select id="initB">
+        <option value="no">No</option>
+        <option value="yes">Sí</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<button onclick="calcular()">Calcular</button>
+
+<div id="out"></div>
+
+<script>
+
+/* ================== VISIBILIDAD ================== */
+
+function refreshPanels(){
+  const mode = document.getElementById("mode").value;
+  document.getElementById("dayPanel").classList.toggle("hidden", !(mode === "p1d" || mode === "p2d"));
+  document.getElementById("personBPanel").classList.toggle("hidden", mode !== "p2d");
+}
+window.addEventListener("load", refreshPanels);
+document.getElementById("mode").addEventListener("change", refreshPanels);
+
+/* ================== BASE ================== */
+
+const V = { A:1, I:2, U:3, E:4, O:5 };
+
+function sumDigits(n){
+  return String(Math.abs(n)).split("").reduce((a,d)=>a+parseInt(d),0);
+}
+function reduceTo10(n){
+  while(n > 10) n = sumDigits(n);
+  return n;
+}
+function reduceIfOver10(n){
+  return n>10 ? reduceTo10(n) : n;
+}
+
+/* ================== VOCALES ================== */
+
+function prepareForVowels(name){
+  let s = (name || "").replace(/[Üü]/g,"§");
+  s = s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase();
+  s = s.replace(/Y\b/g,"I");
+  s = s.replace(/QU(?=[EI])/g,"Q");
+  s = s.replace(/GU(?=[EI])/g,"G");
+  s = s.replace(/§/g,"U");
+  return s;
+}
+function extractVowels(name){
+  return (prepareForVowels(name).match(/[AEIOU]/g) || []);
+}
+function computeNameNumber(name, initiated){
+  const raw = extractVowels(name).reduce((a,ch)=>a+(V[ch]||0),0);
+  return initiated ? reduceTo10(raw) : raw;
+}
+
+/* ================== FECHA ================== */
+
+function parseDate(dateStr){
+  if(!dateStr) return null;
+  const parts = dateStr.split("-");
+  if(parts.length!==3) return null;
+  return {
+    d:+parts[2],
+    m:+parts[1],
+    y:+parts[0],
+    y1:+parts[0].slice(0,2),
+    y2:+parts[0].slice(2,4)
+  };
+}
+
+/* ================== CALCULO ================== */
+
+function calcular(){
+
+  const mode = document.getElementById("mode").value;
+  const out = document.getElementById("out");
+
+  const nameA=document.getElementById("nameA").value;
+  const dobA=document.getElementById("dobA").value;
+  const initA=document.getElementById("initA").value==="yes";
+
+  const nameB=document.getElementById("nameB").value;
+  const dobB=document.getElementById("dobB").value;
+  const initB=document.getElementById("initB").value==="yes";
+
+  const dayX=document.getElementById("dayX").value;
+
+  if(mode==="p2d"){
+    /* ENCUENTRO */
+    const fA=parseDate(dobA);
+    const fB=parseDate(dobB);
+    const fX=parseDate(dayX);
+    if(!fA||!fB||!fX){ out.innerHTML="Faltan datos"; return;}
+
+    const total=
+      (fA.d+fA.m+fA.y1+fA.y2+computeNameNumber(nameA,initA))+
+      (fB.d+fB.m+fB.y1+fB.y2+computeNameNumber(nameB,initB))+
+      (fX.d+fX.m+fX.y1+fX.y2);
+
+    const N= total%10;
+    const S= reduceIfOver10(Math.floor(total/10));
+
+    const E=reduceIfOver10(S+N);
+    const O=reduceIfOver10(S+E);
+    const T=reduceIfOver10(N+E);
+    const DK=reduceIfOver10(S+O);
+    const Oplus=reduceIfOver10(O+N);
+    const Ominus=reduceIfOver10(S+E);
+
+    render(N,S,E,O,T,DK,Oplus,Ominus,"·");
+    return;
+  }
+
+  /* ENREDO / DIA */
+
+  const fA=parseDate(dobA);
+  if(!fA){ out.innerHTML="Faltan datos"; return;}
+
+  const nombre=computeNameNumber(nameA,initA);
+  const sNombre=String(nombre).padStart(2,"0");
+  const n1=+sNombre[0];
+  const n2=+sNombre[1];
+
+  let N=n2+Number(String(fA.d).padStart(2,"0")[1])+Number(String(fA.m).padStart(2,"0")[1])+Number(String(fA.y)[1])+Number(String(fA.y)[3]);
+  let S=n1+Number(String(fA.d).padStart(2,"0")[0])+Number(String(fA.m).padStart(2,"0")[0])+Number(String(fA.y)[0])+Number(String(fA.y)[2]);
+
+  if(mode==="p1d"){
+    const fX=parseDate(dayX);
+    if(!fX){ out.innerHTML="Falta día concreto"; return;}
+    N+=Number(String(fX.d).padStart(2,"0")[1])+Number(String(fX.m).padStart(2,"0")[1])+Number(String(fX.y)[1])+Number(String(fX.y)[3]);
+    S+=Number(String(fX.d).padStart(2,"0")[0])+Number(String(fX.m).padStart(2,"0")[0])+Number(String(fX.y)[0])+Number(String(fX.y)[2]);
+  }
+
+  N=reduceIfOver10(N);
+  S=reduceIfOver10(S);
+
+  const E=reduceIfOver10(N+S);
+  const O=reduceIfOver10(S+E);
+  const T=reduceIfOver10(N+E);
+  const DK=reduceIfOver10(S+O);
+
+  const Oplus=reduceIfOver10(O+N);
+  const Ominus=reduceIfOver10(S+E);
+
+  /* NUEVA LOGICA CENTRO */
+  const leftValue=N+E;      // sin reducir
+  const rightValue=S+O;     // sin reducir
+
+  let center="·";
+  if(leftValue>rightValue) center="+";
+  else if(rightValue>leftValue) center="-";
+
+  render(N,S,E,O,T,DK,Oplus,Ominus,center);
+}
+
+/* ================== RENDER ================== */
+
+function render(N,S,E,O,T,DK,Oplus,Ominus,center){
+  document.getElementById("out").innerHTML=`
+  <div class="panel">
+    <div class="matrix">
+      <div class="cell">O+<span>${Oplus}</span></div>
+      <div class="cell">N<span>${N}</span></div>
+      <div class="cell">T<span>${T}</span></div>
+
+      <div class="cell">O<span>${O}</span></div>
+      <div class="cell"><span class="dot">${center}</span></div>
+      <div class="cell">E<span>${E}</span></div>
+
+      <div class="cell">DK<span>${DK}</span></div>
+      <div class="cell">S<span>${S}</span></div>
+      <div class="cell">O-<span>${Ominus}</span></div>
+    </div>
+  </div>`;
+}
+
+</script>
+</body>
+</html>
